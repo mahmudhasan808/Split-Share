@@ -153,6 +153,28 @@ export const TeamWorkspacePage: React.FC = () => {
     alert(`${label} copied!`);
   };
 
+
+  const handleSSLCommerzInit = async () => {
+    try {
+      const res = await fetch('http://localhost:4000/api/payments/sslcommerz/init', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ teamId: team.id, amount: team.costPerMemberBDT })
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert('Failed to initialize SSLCommerz payment');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handlePaymentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !txIdInput) return;
