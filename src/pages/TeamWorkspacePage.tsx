@@ -291,7 +291,7 @@ export const TeamWorkspacePage: React.FC = () => {
                   <div>
                     <h4 className="text-sm font-bold text-amber-900 dark:text-amber-200">Credentials Locked</h4>
                     <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
-                      Submit your ৳{team.costPerMemberBDT} payment via {team.paymentMethod} to unlock the shared subscription credentials.
+                      Submit your ৳{team.costPerMemberBDT} payment to unlock the shared subscription credentials.
                     </p>
                     <Button size="sm" variant="primary" className="mt-3" onClick={() => setActiveTab('billing')}>
                       Submit TxID Now →
