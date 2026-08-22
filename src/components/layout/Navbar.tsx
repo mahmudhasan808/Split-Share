@@ -23,7 +23,7 @@ import { Badge } from '../ui/Badge';
 
 export const Navbar: React.FC = () => {
   const { currentUser, logout, isAuthenticated, isAdmin } = useAuth();
-  const { notifications, markNotificationAsRead } = 
+  const notifications: any[] = []; const markNotificationAsRead = (id: any) => {};
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
