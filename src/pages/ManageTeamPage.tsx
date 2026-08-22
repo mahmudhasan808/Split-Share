@@ -446,14 +446,7 @@ export const ManageTeamPage: React.FC = () => {
                       </div>
                     </div>
 
-                    }>
-                          Reject
-                        </Button>
-                        <Button size="sm" variant="success" onClick={() => verifyPaymentReq({ variables: { id: pay.id } })}>
-                          Verify & Grant Credentials
-                        </Button>
-                      </div>
-                    )}
+
                   </div>
                 ))
               )}
