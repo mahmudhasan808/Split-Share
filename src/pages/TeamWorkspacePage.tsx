@@ -175,6 +175,27 @@ export const TeamWorkspacePage: React.FC = () => {
     }
   };
 
+  const handleSSLCommerzInit = async () => {
+    try {
+      const res = await fetch('http://localhost:4000/api/payments/sslcommerz/init', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': Bearer 
+        },
+        body: JSON.stringify({ teamId: team.id, amount: team.costPerMemberBDT })
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert('Failed to initialize SSLCommerz payment');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handlePaymentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !txIdInput) return;
@@ -319,7 +340,25 @@ export const TeamWorkspacePage: React.FC = () => {
         {/* Tab 2: Billing & Payment Proof Submission */}
         {activeTab === 'billing' && (
           <div className="flex flex-col gap-6">
-            <Card className="p-6">
+            <Card className="p-6 bg-indigo-50/50 dark:bg-indigo-900/10 border-indigo-200 dark:border-indigo-800">
+               <h3 className="text-base font-bold text-indigo-900 dark:text-indigo-100 mb-2 flex items-center gap-2">
+                 <ShieldCheck className="w-5 h-5 text-indigo-500" /> Automatic Payment (SSLCommerz Sandbox)
+               </h3>
+               <p className="text-xs text-indigo-700/80 dark:text-indigo-300/80 mb-4 max-w-lg">
+                 Pay securely using Credit Card, bKash, or Mobile Banking via the SSLCommerz dummy gateway. Your credentials will unlock instantly upon success.
+               </p>
+               <Button variant="primary" onClick={handleSSLCommerzInit} leftIcon={<CreditCard className="w-4 h-4" />}>
+                 Pay ?{team.costPerMemberBDT} via SSLCommerz
+               </Button>
+            </Card>
+            
+            <div className="flex items-center gap-4 py-2">
+              <div className="h-px bg-slate-200 dark:bg-slate-800 flex-1" />
+              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">OR MANUAL TRANSFER</span>
+              <div className="h-px bg-slate-200 dark:bg-slate-800 flex-1" />
+            </div>
+
+            <Card className="p-6 opacity-75 hover:opacity-100 transition-opacity">
               <h3 className="text-base font-bold text-slate-900 dark:text-white mb-3">
                 1. Transfer Payment to Team Host
               </h3>
