@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useData } from '../context/DataContext';
+import { useQuery } from '@apollo/client/react';
+import { gql } from '@apollo/client';
+import { SERVICE_PRESETS } from '../data/mockData';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -10,34 +12,66 @@ import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import {
   Users,
   CreditCard,
-  Calendar,
   AlertCircle,
   PlusCircle,
   ArrowRight,
   TrendingUp,
-  CheckCircle2,
-  Lock,
   Crown
 } from 'lucide-react';
 
+const GET_MY_TEAMS_DASHBOARD = gql`
+  query GetMyTeamsDashboard {
+    myTeams {
+      id
+      name
+      subscriptionName
+      totalCost
+      maxMembers
+      ownerId
+      renewalDate
+      members {
+        user {
+          id
+        }
+      }
+    }
+  }
+`;
+
 export const DashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { teams, payments, notifications, joinRequests } = useData();
   const navigate = useNavigate();
 
+  const { data: rawData, loading, error } = useQuery(GET_MY_TEAMS_DASHBOARD, {
+    fetchPolicy: 'cache-and-network'
+  });
+
+  const data: any = rawData;
+  const teams = useMemo(() => {
+    if (!data?.myTeams) return [];
+    return data.myTeams.map((t: any) => {
+      const preset = SERVICE_PRESETS.find(p => p.name === t.subscriptionName);
+      return {
+        ...t,
+        category: preset?.category || 'Custom',
+        serviceLogo: preset?.logo || '✨',
+        serviceName: t.subscriptionName,
+        currentMembersCount: t.members?.length || 1,
+        costPerMemberBDT: Math.round(t.totalCost / (t.maxMembers || 1)),
+        nextRenewalDate: t.renewalDate
+      };
+    });
+  }, [data]);
+
   // Compute User Specific Stats
-  const ownedTeams = teams.filter(t => t.ownerId === currentUser?.id);
-  const joinedTeams = teams.filter(t => t.members.some(m => m.userId === currentUser?.id && m.userId !== t.ownerId));
+  const ownedTeams = teams.filter((t: any) => t.ownerId === currentUser?.id);
+  const joinedTeams = teams.filter((t: any) => t.members.some((m: any) => m.user.id === currentUser?.id && t.ownerId !== currentUser?.id));
 
-  const totalMonthlySavings = joinedTeams.reduce((sum, t) => sum + (t.totalCostBDT - t.costPerMemberBDT), 0);
+  const totalMonthlySavings = joinedTeams.reduce((sum: number, t: any) => sum + (t.totalCost - t.costPerMemberBDT), 0);
 
-  const pendingPaymentAlerts = payments.filter(
-    p => p.status === 'pending' && (p.userId === currentUser?.id || ownedTeams.some(ot => ot.id === p.teamId))
-  );
-
-  const pendingOwnerJoinRequests = joinRequests.filter(
-    r => r.status === 'pending' && ownedTeams.some(ot => ot.id === r.teamId)
-  );
+  // Stub for now since backend doesn't export these top level queries yet
+  const pendingPaymentAlerts: any[] = [];
+  const pendingOwnerJoinRequests: any[] = [];
 
   return (
     <div className="flex max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 gap-6">
@@ -58,7 +92,7 @@ export const DashboardPage: React.FC = () => {
                 </Badge>
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {currentUser?.role === 'owner'
+                {currentUser?.role === 'ADMIN'
                   ? 'Manage your active subscription teams & verify bKash payments.'
                   : 'Track your shared subscription slots & renewal deadlines.'}
               </p>
@@ -101,7 +135,7 @@ export const DashboardPage: React.FC = () => {
           <Card className="p-5 flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Owned Teams</span>
-              <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{ownedTeams.length}</h3>
+              <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{loading ? '-' : ownedTeams.length}</h3>
               <p className="text-[11px] text-slate-500 mt-0.5">Hosted by you</p>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
@@ -112,7 +146,7 @@ export const DashboardPage: React.FC = () => {
           <Card className="p-5 flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Joined Teams</span>
-              <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{joinedTeams.length}</h3>
+              <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{loading ? '-' : joinedTeams.length}</h3>
               <p className="text-[11px] text-slate-500 mt-0.5">Active member slots</p>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center">
@@ -123,7 +157,9 @@ export const DashboardPage: React.FC = () => {
           <Card className="p-5 flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Monthly Savings</span>
-              <h3 className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">৳{totalMonthlySavings}</h3>
+              <h3 className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">
+                {loading ? '-' : `৳${totalMonthlySavings}`}
+              </h3>
               <p className="text-[11px] text-slate-500 mt-0.5">Saved vs full price</p>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
@@ -145,10 +181,12 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           <div className="flex flex-col gap-3">
-            {[...ownedTeams, ...joinedTeams].length === 0 ? (
+            {loading ? (
+              <p className="text-xs text-slate-500 py-4 text-center">Loading upcoming renewals...</p>
+            ) : [...ownedTeams, ...joinedTeams].length === 0 ? (
               <p className="text-xs text-slate-500 py-4 text-center">You have not joined or created any teams yet.</p>
             ) : (
-              [...ownedTeams, ...joinedTeams].map(team => (
+              [...ownedTeams, ...joinedTeams].map((team: any) => (
                 <div
                   key={team.id}
                   className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800"
@@ -165,7 +203,7 @@ export const DashboardPage: React.FC = () => {
                     <div className="text-right">
                       <span className="text-[10px] text-slate-400 block">Renewal Date</span>
                       <span className="text-xs font-semibold text-slate-900 dark:text-slate-200">
-                        {team.nextRenewalDate}
+                        {new Date(team.nextRenewalDate).toLocaleDateString()}
                       </span>
                     </div>
 

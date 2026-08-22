@@ -1,33 +1,58 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useData } from '../context/DataContext';
+import { useMutation } from '@apollo/client/react';
+import { gql } from '@apollo/client';
 import { SERVICE_PRESETS } from '../data/mockData';
-import { ServicePreset, SubscriptionCategory } from '../types';
+import { ServicePreset } from '../types';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { Card } from '../components/ui/Card';
 import { Input, Select, Textarea } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
-import { Layers, CreditCard, Sparkles, CheckCircle2, Shield } from 'lucide-react';
+
+const CREATE_TEAM_MUTATION = gql`
+  mutation CreateTeam(
+    $name: String!, $subscriptionName: String!, $description: String,
+    $rules: String, $billingCycle: String!, $totalCost: Float!,
+    $maxMembers: Int!, $visibility: String, $paymentMethod: String!,
+    $paymentNumber: String!, $renewalDate: String!
+  ) {
+    createTeam(
+      name: $name,
+      subscriptionName: $subscriptionName,
+      description: $description,
+      rules: $rules,
+      billingCycle: $billingCycle,
+      totalCost: $totalCost,
+      maxMembers: $maxMembers,
+      visibility: $visibility,
+      paymentMethod: $paymentMethod,
+      paymentNumber: $paymentNumber,
+      renewalDate: $renewalDate
+    ) {
+      id
+    }
+  }
+`;
 
 export const CreateTeamPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { createTeam } = useData();
   const navigate = useNavigate();
+
+  const [createTeam, { loading }] = useMutation(CREATE_TEAM_MUTATION);
 
   const [selectedService, setSelectedService] = useState<ServicePreset>(SERVICE_PRESETS[0]);
   const [teamName, setTeamName] = useState('Netflix 4K Shared Family');
   const [description, setDescription] = useState('Shared 4K Ultra HD profile slot. Auto-renews on the 1st of every month via bKash.');
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
   const [totalCostBDT, setTotalCostBDT] = useState<number>(1400);
   const [maxMembers, setMaxMembers] = useState<number>(4);
   const [rules, setRules] = useState<string>('Only log in on 1 designated screen\nDo not alter profile names or PINs\nPay before renewal date');
   const [paymentMethod, setPaymentMethod] = useState<'bKash' | 'Nagad' | 'Bank'>('bKash');
   const [paymentNumber, setPaymentNumber] = useState(currentUser?.phone || '01711998877');
-  const [nextRenewalDate, setNextRenewalDate] = useState('2026-09-01');
-  const [visibility, setVisibility] = useState<'public' | 'private'>('public');
+  const [nextRenewalDate, setNextRenewalDate] = useState('2026-09-01T00:00:00Z');
+  const [visibility, setVisibility] = useState<'PUBLIC' | 'PRIVATE'>('PUBLIC');
 
   const costPerMemberBDT = Math.round(totalCostBDT / (maxMembers || 1));
 
@@ -38,34 +63,31 @@ export const CreateTeamPage: React.FC = () => {
     setMaxMembers(preset.defaultMaxMembers);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
 
-    const ruleArray = rules.split('\n').filter(r => r.trim().length > 0);
-
-    const newTeam = createTeam({
-      name: teamName,
-      serviceName: selectedService.name,
-      category: selectedService.category,
-      serviceLogo: selectedService.logo,
-      description,
-      rules: ruleArray.length > 0 ? ruleArray : ['Follow host terms and renew on time'],
-      totalCostBDT,
-      costPerMemberBDT,
-      billingCycle,
-      maxMembers,
-      ownerId: currentUser.id,
-      ownerName: currentUser.name,
-      ownerAvatar: currentUser.avatar,
-      ownerPhone: paymentNumber,
-      paymentMethod,
-      paymentNumber,
-      nextRenewalDate,
-      visibility
-    });
-
-    navigate(`/manage/${newTeam.id}`);
+    try {
+      const { data }: any = await createTeam({
+        variables: {
+          name: teamName,
+          subscriptionName: selectedService.name,
+          description,
+          rules,
+          billingCycle,
+          totalCost: totalCostBDT,
+          maxMembers,
+          visibility,
+          paymentMethod,
+          paymentNumber,
+          renewalDate: nextRenewalDate
+        }
+      });
+      navigate(`/manage/${data.createTeam.id}`);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to create team. Ensure you are logged in.');
+    }
   };
 
   return (
@@ -139,8 +161,8 @@ export const CreateTeamPage: React.FC = () => {
                 value={billingCycle}
                 onChange={e => setBillingCycle(e.target.value as any)}
                 options={[
-                  { value: 'monthly', label: 'Monthly' },
-                  { value: 'yearly', label: 'Yearly' }
+                  { value: 'MONTHLY', label: 'Monthly' },
+                  { value: 'YEARLY', label: 'Yearly' }
                 ]}
               />
             </div>
@@ -155,7 +177,7 @@ export const CreateTeamPage: React.FC = () => {
               </div>
               <div className="text-right">
                 <span className="text-2xl font-extrabold">৳{costPerMemberBDT}</span>
-                <span className="text-xs font-normal text-indigo-200"> / {billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
+                <span className="text-xs font-normal text-indigo-200"> / {billingCycle === 'MONTHLY' ? 'mo' : 'yr'}</span>
               </div>
             </div>
           </Card>
@@ -176,8 +198,8 @@ export const CreateTeamPage: React.FC = () => {
               <Input
                 label="Next Renewal Date"
                 type="date"
-                value={nextRenewalDate}
-                onChange={e => setNextRenewalDate(e.target.value)}
+                value={nextRenewalDate.split('T')[0]}
+                onChange={e => setNextRenewalDate(new Date(e.target.value).toISOString())}
               />
             </div>
 
@@ -219,8 +241,8 @@ export const CreateTeamPage: React.FC = () => {
                 value={visibility}
                 onChange={e => setVisibility(e.target.value as any)}
                 options={[
-                  { value: 'public', label: 'Public (Listed on Browse)' },
-                  { value: 'private', label: 'Private (Invite Link Only)' }
+                  { value: 'PUBLIC', label: 'Public (Listed on Browse)' },
+                  { value: 'PRIVATE', label: 'Private (Invite Link Only)' }
                 ]}
               />
             </div>
@@ -230,8 +252,8 @@ export const CreateTeamPage: React.FC = () => {
             <Button variant="outline" type="button" onClick={() => navigate('/my-teams')}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit">
-              Publish Team & Launch
+            <Button variant="primary" type="submit" disabled={loading}>
+              {loading ? 'Creating...' : 'Publish Team & Launch'}
             </Button>
           </div>
         </form>

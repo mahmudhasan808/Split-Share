@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useData } from '../context/DataContext';
+import { useQuery } from '@apollo/client/react';
+import { gql } from '@apollo/client';
+import { SERVICE_PRESETS } from '../data/mockData';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { Card } from '../components/ui/Card';
@@ -10,15 +12,57 @@ import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Crown, Users, PlusCircle } from 'lucide-react';
 
+const GET_MY_TEAMS = gql`
+  query GetMyTeams {
+    myTeams {
+      id
+      name
+      subscriptionName
+      description
+      totalCost
+      maxMembers
+      ownerId
+      renewalDate
+      members {
+        role
+        paymentStatus
+        user {
+          id
+        }
+      }
+    }
+  }
+`;
+
 export const MyTeamsPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { teams } = useData();
   const navigate = useNavigate();
+
+  const { data: rawData, loading, error } = useQuery(GET_MY_TEAMS, {
+    fetchPolicy: 'cache-and-network'
+  });
 
   const [activeTab, setActiveTab] = useState<'owned' | 'joined'>('owned');
 
-  const ownedTeams = teams.filter(t => t.ownerId === currentUser?.id);
-  const joinedTeams = teams.filter(t => t.members.some(m => m.userId === currentUser?.id && m.userId !== t.ownerId));
+  const data: any = rawData;
+  const teams = useMemo(() => {
+    if (!data?.myTeams) return [];
+    return data.myTeams.map((t: any) => {
+      const preset = SERVICE_PRESETS.find(p => p.name === t.subscriptionName);
+      return {
+        ...t,
+        category: preset?.category || 'Custom',
+        serviceLogo: preset?.logo || '✨',
+        serviceName: t.subscriptionName,
+        currentMembersCount: t.members?.length || 1,
+        costPerMemberBDT: Math.round(t.totalCost / (t.maxMembers || 1)),
+        nextRenewalDate: t.renewalDate
+      };
+    });
+  }, [data]);
+
+  const ownedTeams = teams.filter((t: any) => t.ownerId === currentUser?.id);
+  const joinedTeams = teams.filter((t: any) => t.members.some((m: any) => m.user.id === currentUser?.id && t.ownerId !== currentUser?.id));
 
   const displayTeams = activeTab === 'owned' ? ownedTeams : joinedTeams;
 
@@ -67,76 +111,85 @@ export const MyTeamsPage: React.FC = () => {
           </button>
         </div>
 
-        {/* Teams List */}
-        {displayTeams.length === 0 ? (
-          <EmptyState
-            title={activeTab === 'owned' ? 'No Owned Teams Yet' : 'No Joined Teams Yet'}
-            description={
-              activeTab === 'owned'
-                ? 'Create a team to share your Netflix, Spotify, or Canva subscription with others.'
-                : 'Browse available teams on SplitShare and request to join a slot.'
-            }
-            actionLabel={activeTab === 'owned' ? 'Host a Team' : 'Browse Open Teams'}
-            onAction={() => navigate(activeTab === 'owned' ? '/create-team' : '/browse')}
-          />
+        {loading ? (
+          <div className="p-10 text-center text-slate-500">Loading your teams...</div>
+        ) : error ? (
+          <div className="p-10 text-center text-rose-500">Failed to load teams.</div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {displayTeams.map(team => {
-              const isOwner = team.ownerId === currentUser?.id;
-              const myMemberStatus = team.members.find(m => m.userId === currentUser?.id)?.paymentStatus || 'pending';
+          <>
+            {/* Teams List */}
+            {displayTeams.length === 0 ? (
+              <EmptyState
+                title={activeTab === 'owned' ? 'No Owned Teams Yet' : 'No Joined Teams Yet'}
+                description={
+                  activeTab === 'owned'
+                    ? 'Create a team to share your Netflix, Spotify, or Canva subscription with others.'
+                    : 'Browse available teams on SplitShare and request to join a slot.'
+                }
+                actionLabel={activeTab === 'owned' ? 'Host a Team' : 'Browse Open Teams'}
+                onAction={() => navigate(activeTab === 'owned' ? '/create-team' : '/browse')}
+              />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {displayTeams.map((team: any) => {
+                  const isOwner = team.ownerId === currentUser?.id;
+                  const myMember = team.members.find((m: any) => m.user.id === currentUser?.id);
+                  const myMemberStatus = myMember?.paymentStatus || 'PENDING';
 
-              return (
-                <Card key={team.id} className="p-5 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">{team.serviceLogo}</span>
-                        <Badge variant="purple" size="sm">
-                          {team.category}
-                        </Badge>
+                  return (
+                    <Card key={team.id} className="p-5 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl">{team.serviceLogo}</span>
+                            <Badge variant="purple" size="sm">
+                              {team.category}
+                            </Badge>
+                          </div>
+                          <Badge variant={team.currentMembersCount >= team.maxMembers ? 'full' : 'active'} size="sm">
+                            {team.currentMembersCount} / {team.maxMembers} Members
+                          </Badge>
+                        </div>
+
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">{team.name}</h3>
+                        <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium mt-0.5">{team.serviceName}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 line-clamp-2 leading-relaxed">
+                          {team.description}
+                        </p>
                       </div>
-                      <Badge variant={team.currentMembersCount >= team.maxMembers ? 'full' : 'active'} size="sm">
-                        {team.currentMembersCount} / {team.maxMembers} Members
-                      </Badge>
-                    </div>
 
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">{team.name}</h3>
-                    <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium mt-0.5">{team.serviceName}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 line-clamp-2 leading-relaxed">
-                      {team.description}
-                    </p>
-                  </div>
+                      <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-semibold uppercase block">Monthly Split</span>
+                          <span className="text-lg font-extrabold text-slate-900 dark:text-white">
+                            ৳{team.costPerMemberBDT}
+                          </span>
+                        </div>
 
-                  <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-semibold uppercase block">Monthly Split</span>
-                      <span className="text-lg font-extrabold text-slate-900 dark:text-white">
-                        ৳{team.costPerMemberBDT}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {!isOwner && (
-                        <Badge variant={myMemberStatus === 'paid' ? 'paid' : 'pending'} size="sm">
-                          {myMemberStatus === 'paid' ? 'Paid' : 'Payment Due'}
-                        </Badge>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={() => {
-                          if (isOwner) navigate(`/manage/${team.id}`);
-                          else navigate(`/workspace/${team.id}`);
-                        }}
-                      >
-                        {isOwner ? 'Manage Owner Hub' : 'Open Workspace'}
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+                        <div className="flex items-center gap-2">
+                          {!isOwner && (
+                            <Badge variant={myMemberStatus === 'PAID' ? 'paid' : 'pending'} size="sm">
+                              {myMemberStatus === 'PAID' ? 'Paid' : 'Payment Due'}
+                            </Badge>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => {
+                              if (isOwner) navigate(`/manage/${team.id}`);
+                              else navigate(`/workspace/${team.id}`);
+                            }}
+                          >
+                            {isOwner ? 'Manage Owner Hub' : 'Open Workspace'}
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>

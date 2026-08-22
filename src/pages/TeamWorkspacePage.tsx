@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useData } from '../context/DataContext';
+import { useQuery, useMutation } from '@apollo/client/react';
+import { gql } from '@apollo/client';
+import { SERVICE_PRESETS } from '../data/mockData';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { Card } from '../components/ui/Card';
@@ -21,10 +23,63 @@ import {
   Upload
 } from 'lucide-react';
 
+const GET_WORKSPACE_TEAM = gql`
+  query GetWorkspaceTeam($id: ID!) {
+    team(id: $id) {
+      id
+      name
+      subscriptionName
+      rules
+      totalCost
+      maxMembers
+      paymentMethod
+      paymentNumber
+      ownerId
+      createdAt
+      owner {
+        name
+      }
+      members {
+        paymentStatus
+        joinedAt
+        user {
+          id
+          name
+          avatar
+        }
+      }
+      payments {
+        id
+        amount
+        method
+        transactionId
+        status
+        createdAt
+        user {
+          id
+        }
+      }
+    }
+    teamCredentials(teamId: $id) {
+      emailOrUsername
+      passwordEncrypted
+      notes
+    }
+  }
+`;
+
+const SUBMIT_PAYMENT = gql`
+  mutation SubmitPayment($teamId: ID!, $amount: Float!, $method: String!, $transactionId: String) {
+    submitPaymentProof(teamId: $teamId, amount: $amount, method: $method, transactionId: $transactionId) {
+      id
+      status
+    }
+  }
+`;
+
 export const TeamWorkspacePage: React.FC = () => {
   const { teamId } = useParams<{ teamId: string }>();
   const { currentUser } = useAuth();
-  const { teams, payments, submitPaymentProof, addToast } = useData();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'billing' | 'members' | 'credentials' | 'activity'>('overview');
@@ -34,7 +89,33 @@ export const TeamWorkspacePage: React.FC = () => {
   const [txIdInput, setTxIdInput] = useState('');
   const [proofPreview, setProofPreview] = useState<string | null>(null);
 
-  const team = teams.find(t => t.id === teamId);
+  const { data: rawData, loading, error, refetch } = useQuery(GET_WORKSPACE_TEAM, {
+    variables: { id: teamId },
+    fetchPolicy: 'network-only',
+    skip: !teamId
+  });
+  const data: any = rawData;
+
+  const [submitPayment] = useMutation(SUBMIT_PAYMENT, { onCompleted: () => { alert("Payment proof submitted!"); refetch(); }});
+
+  const team = useMemo(() => {
+    if (!data?.team) return null;
+    const t = data.team;
+    const preset = SERVICE_PRESETS.find(p => p.name === t.subscriptionName);
+    return {
+      ...t,
+      serviceLogo: preset?.logo || '✨',
+      serviceName: t.subscriptionName,
+      currentMembersCount: t.members?.length || 1,
+      costPerMemberBDT: Math.round(t.totalCost / (t.maxMembers || 1)),
+      ownerName: t.owner?.name || 'Host',
+      rules: t.rules ? t.rules.split('\n').filter(Boolean) : [],
+      credentials: data.teamCredentials
+    };
+  }, [data]);
+
+  if (loading) return <div className="p-10 text-center">Loading workspace...</div>;
+  if (error) return <div className="p-10 text-center text-rose-500">Error: {error.message}</div>;
 
   if (!team) {
     return (
@@ -50,26 +131,39 @@ export const TeamWorkspacePage: React.FC = () => {
     );
   }
 
-  const myMemberInfo = team.members.find(m => m.userId === currentUser?.id);
-  const isPaid = myMemberInfo?.paymentStatus === 'paid';
-  const myPayments = payments.filter(p => p.teamId === team.id && p.userId === currentUser?.id);
+  const myMemberInfo = team.members.find((m: any) => m.user.id === currentUser?.id);
+  
+  if (!myMemberInfo && currentUser?.id !== team.ownerId) {
+    return (
+      <div className="flex max-w-7xl mx-auto w-full px-4 py-16">
+        <Sidebar />
+        <main className="flex-1 text-center py-12">
+          <h2 className="text-xl font-bold text-rose-600">Access Denied</h2>
+          <p className="text-xs text-slate-500 mt-2">You are not a member of this team.</p>
+        </main>
+      </div>
+    );
+  }
+
+  const isPaid = myMemberInfo?.paymentStatus === 'PAID' || currentUser?.id === team.ownerId;
+  const myPayments = (team.payments || []).filter((p: any) => p.user.id === currentUser?.id);
 
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
-    addToast('success', 'Copied to Clipboard!', `${label} copied.`);
+    alert(`${label} copied!`);
   };
 
   const handlePaymentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !txIdInput) return;
-    submitPaymentProof(
-      team.id,
-      currentUser,
-      team.costPerMemberBDT,
-      team.paymentMethod,
-      txIdInput,
-      proofPreview || undefined
-    );
+    submitPayment({
+      variables: {
+        teamId: team.id,
+        amount: team.costPerMemberBDT,
+        method: team.paymentMethod,
+        transactionId: txIdInput
+      }
+    });
     setTxIdInput('');
     setProofPreview(null);
   };
@@ -91,9 +185,11 @@ export const TeamWorkspacePage: React.FC = () => {
                   <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold uppercase">
                     Member Workspace
                   </span>
-                  <Badge variant={isPaid ? 'paid' : 'pending'} size="sm">
-                    {isPaid ? 'Payment Verified' : 'Payment Due'}
-                  </Badge>
+                  {currentUser?.id !== team.ownerId && (
+                    <Badge variant={isPaid ? 'paid' : 'pending'} size="sm">
+                      {isPaid ? 'Payment Verified' : 'Payment Due'}
+                    </Badge>
+                  )}
                 </div>
                 <h1 className="text-2xl font-extrabold mt-1">{team.name}</h1>
                 <p className="text-xs text-indigo-200">{team.serviceName} • Host: {team.ownerName}</p>
@@ -165,17 +261,19 @@ export const TeamWorkspacePage: React.FC = () => {
         {/* Tab 1: Overview */}
         {activeTab === 'overview' && (
           <div className="flex flex-col gap-6">
-            <Card className="p-6">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Team Guidelines & Rules</h3>
-              <ul className="flex flex-col gap-2">
-                {team.rules.map((rule, idx) => (
-                  <li key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-slate-700 dark:text-slate-300">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span>{rule}</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
+            {team.rules.length > 0 && (
+              <Card className="p-6">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Team Guidelines & Rules</h3>
+                <ul className="flex flex-col gap-2">
+                  {team.rules.map((rule: string, idx: number) => (
+                    <li key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                      <span>{rule}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
 
             {!isPaid && (
               <Card className="p-6 bg-amber-500/10 border-amber-500/30">
@@ -236,22 +334,8 @@ export const TeamWorkspacePage: React.FC = () => {
                   placeholder="e.g. BK9928172X or NG7739011Z"
                   value={txIdInput}
                   onChange={e => setTxIdInput(e.target.value)}
+                  required
                 />
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-1.5">
-                    Payment Proof Screenshot (Optional)
-                  </label>
-                  <div
-                    onClick={() => setProofPreview('https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=400')}
-                    className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 text-center cursor-pointer hover:border-indigo-500 transition-colors"
-                  >
-                    <Upload className="w-6 h-6 text-slate-400 mx-auto mb-1" />
-                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      {proofPreview ? 'Screenshot Attached ✅' : 'Click to Upload Screenshot'}
-                    </p>
-                  </div>
-                </div>
 
                 <Button type="submit" variant="primary" leftIcon={<Send className="w-4 h-4" />}>
                   Submit Payment Proof for Verification
@@ -266,16 +350,16 @@ export const TeamWorkspacePage: React.FC = () => {
                 {myPayments.length === 0 ? (
                   <p className="text-xs text-slate-500 py-4">No payments submitted yet.</p>
                 ) : (
-                  myPayments.map(p => (
+                  myPayments.map((p: any) => (
                     <div
                       key={p.id}
                       className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-xs"
                     >
                       <div>
                         <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{p.transactionId}</span>
-                        <span className="text-[10px] text-slate-400 block">{p.submittedAt}</span>
+                        <span className="text-[10px] text-slate-400 block">{new Date(Number(p.createdAt)).toLocaleString()}</span>
                       </div>
-                      <Badge variant={p.status === 'verified' ? 'verified' : p.status === 'rejected' ? 'rejected' : 'pending'} size="sm">
+                      <Badge variant={p.status === 'VERIFIED' ? 'verified' : p.status === 'REJECTED' ? 'rejected' : 'pending'} size="sm">
                         {p.status.toUpperCase()}
                       </Badge>
                     </div>
@@ -296,7 +380,7 @@ export const TeamWorkspacePage: React.FC = () => {
                 </div>
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">Credentials Locked</h3>
                 <p className="text-xs text-slate-500 max-w-sm mt-1 mb-4 leading-relaxed">
-                  Shared account login details are strictly hidden until host {team.ownerName} verifies your bKash payment.
+                  Shared account login details are strictly hidden until host {team.ownerName} verifies your {team.paymentMethod} payment.
                 </p>
                 <Button size="sm" variant="primary" onClick={() => setActiveTab('billing')}>
                   Submit Payment Proof →
@@ -366,19 +450,19 @@ export const TeamWorkspacePage: React.FC = () => {
           <Card className="p-6">
             <h3 className="text-base font-bold text-slate-900 dark:text-white mb-4">Team Roster</h3>
             <div className="flex flex-col gap-3">
-              {team.members.map(m => (
-                <div key={m.userId} className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800">
+              {team.members.map((m: any) => (
+                <div key={m.user.id} className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800">
                   <div className="flex items-center gap-3">
-                    <img src={m.avatar} alt={m.name} className="w-10 h-10 rounded-xl object-cover" />
+                    <img src={m.user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb'} alt={m.user.name} className="w-10 h-10 rounded-xl object-cover" />
                     <div>
                       <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1">
-                        <span>{m.name}</span>
-                        {m.userId === team.ownerId && <Badge variant="purple" size="sm">Host</Badge>}
+                        <span>{m.user.name}</span>
+                        {m.user.id === team.ownerId && <Badge variant="purple" size="sm">Host</Badge>}
                       </h4>
-                      <p className="text-[10px] text-slate-500">Joined {m.joinedAt}</p>
+                      <p className="text-[10px] text-slate-500">Joined {new Date(Number(m.joinedAt)).toLocaleDateString()}</p>
                     </div>
                   </div>
-                  <Badge variant={m.paymentStatus === 'paid' ? 'paid' : 'pending'} size="sm">
+                  <Badge variant={m.paymentStatus === 'PAID' ? 'paid' : 'pending'} size="sm">
                     {m.paymentStatus.toUpperCase()}
                   </Badge>
                 </div>
@@ -394,11 +478,7 @@ export const TeamWorkspacePage: React.FC = () => {
             <div className="flex flex-col gap-3 text-xs text-slate-600 dark:text-slate-400">
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 flex justify-between">
                 <span>Team created by host {team.ownerName}</span>
-                <span className="text-slate-400">{team.createdAt}</span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 flex justify-between">
-                <span>Shared credentials updated by host</span>
-                <span className="text-slate-400">Recent</span>
+                <span className="text-slate-400">{new Date(Number(team.createdAt)).toLocaleDateString()}</span>
               </div>
             </div>
           </Card>

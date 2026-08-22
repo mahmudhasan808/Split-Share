@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery, useMutation } from '@apollo/client/react';
+import { gql } from '@apollo/client';
 import { useAuth } from '../context/AuthContext';
-import { useData } from '../context/DataContext';
+import { SERVICE_PRESETS } from '../data/mockData';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { Card } from '../components/ui/Card';
@@ -9,7 +11,6 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Input, Textarea } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
-import { EmptyState } from '../components/ui/EmptyState';
 import {
   Users,
   CreditCard,
@@ -25,34 +26,133 @@ import {
   AlertCircle
 } from 'lucide-react';
 
+const GET_MANAGE_TEAM = gql`
+  query GetManageTeam($id: ID!) {
+    team(id: $id) {
+      id
+      name
+      subscriptionName
+      billingCycle
+      totalCost
+      maxMembers
+      paymentMethod
+      paymentNumber
+      renewalDate
+      ownerId
+      members {
+        role
+        paymentStatus
+        joinedAt
+        user {
+          id
+          name
+          avatar
+          email
+        }
+      }
+      joinRequests {
+        id
+        status
+        message
+        createdAt
+        user {
+          id
+          name
+          avatar
+          email
+        }
+      }
+      payments {
+        id
+        amount
+        method
+        transactionId
+        status
+        createdAt
+        user {
+          id
+          name
+          avatar
+        }
+      }
+    }
+    teamCredentials(teamId: $id) {
+      emailOrUsername
+      passwordEncrypted
+      notes
+    }
+  }
+`;
+
+const APPROVE_JOIN = gql`mutation ApproveJoin($id: ID!) { approveJoinRequest(requestId: $id) }`;
+const REJECT_JOIN = gql`mutation RejectJoin($id: ID!) { rejectJoinRequest(requestId: $id) }`;
+const VERIFY_PAYMENT = gql`mutation VerifyPayment($id: ID!) { verifyPayment(paymentId: $id) }`;
+const REJECT_PAYMENT = gql`mutation RejectPayment($id: ID!) { rejectPayment(paymentId: $id) }`;
+const REMOVE_MEMBER = gql`mutation RemoveMember($teamId: ID!, $userId: ID!) { removeMember(teamId: $teamId, userId: $userId) }`;
+const DELETE_TEAM = gql`mutation DeleteTeam($id: ID!) { deleteTeam(id: $id) }`;
+const UPDATE_CREDENTIALS = gql`
+  mutation UpdateCredentials($teamId: ID!, $emailOrUsername: String!, $passwordEncrypted: String!, $notes: String) {
+    updateCredentials(teamId: $teamId, emailOrUsername: $emailOrUsername, passwordEncrypted: $passwordEncrypted, notes: $notes) {
+      id
+    }
+  }
+`;
+
 export const ManageTeamPage: React.FC = () => {
   const { teamId } = useParams<{ teamId: string }>();
   const { currentUser } = useAuth();
-  const {
-    teams,
-    joinRequests,
-    payments,
-    approveJoinRequest,
-    rejectJoinRequest,
-    verifyPayment,
-    rejectPayment,
-    updateCredentials,
-    removeTeamMember,
-    deleteTeam
-  } = useData();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'requests' | 'billing' | 'credentials' | 'settings'>('overview');
 
-  const team = teams.find(t => t.id === teamId);
+  const { data: rawData, loading, error, refetch } = useQuery(GET_MANAGE_TEAM, {
+    variables: { id: teamId },
+    fetchPolicy: 'network-only',
+    skip: !teamId
+  });
+  const data: any = rawData;
+
+  const [approveJoin] = useMutation(APPROVE_JOIN, { onCompleted: () => refetch() });
+  const [rejectJoin] = useMutation(REJECT_JOIN, { onCompleted: () => refetch() });
+  const [verifyPaymentReq] = useMutation(VERIFY_PAYMENT, { onCompleted: () => refetch() });
+  const [rejectPaymentReq] = useMutation(REJECT_PAYMENT, { onCompleted: () => refetch() });
+  const [removeMember] = useMutation(REMOVE_MEMBER, { onCompleted: () => refetch() });
+  const [deleteTeamReq] = useMutation(DELETE_TEAM, { onCompleted: () => navigate('/my-teams') });
+  const [updateCreds] = useMutation(UPDATE_CREDENTIALS, { onCompleted: () => { alert('Credentials saved!'); refetch(); } });
 
   // Form states for credentials editing
-  const [credUsername, setCredUsername] = useState(team?.credentials?.emailOrUsername || '');
-  const [credPassword, setCredPassword] = useState(team?.credentials?.passwordEncrypted || '');
-  const [credNotes, setCredNotes] = useState(team?.credentials?.notes || '');
+  const [credUsername, setCredUsername] = useState('');
+  const [credPassword, setCredPassword] = useState('');
+  const [credNotes, setCredNotes] = useState('');
+
+  // Set form defaults once data loads
+  React.useEffect(() => {
+    if (data?.teamCredentials) {
+      setCredUsername(data.teamCredentials.emailOrUsername || '');
+      setCredPassword(data.teamCredentials.passwordEncrypted || '');
+      setCredNotes(data.teamCredentials.notes || '');
+    }
+  }, [data?.teamCredentials]);
 
   // Delete modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  const team = useMemo(() => {
+    if (!data?.team) return null;
+    const t = data.team;
+    const preset = SERVICE_PRESETS.find(p => p.name === t.subscriptionName);
+    return {
+      ...t,
+      serviceLogo: preset?.logo || '✨',
+      serviceName: t.subscriptionName,
+      currentMembersCount: t.members?.length || 1,
+      costPerMemberBDT: Math.round(t.totalCost / (t.maxMembers || 1)),
+      nextRenewalDate: t.renewalDate
+    };
+  }, [data]);
+
+  if (loading) return <div className="p-10 text-center">Loading management dashboard...</div>;
+  if (error) return <div className="p-10 text-center text-rose-500">Error: {error.message}</div>;
 
   if (!team) {
     return (
@@ -68,7 +168,7 @@ export const ManageTeamPage: React.FC = () => {
     );
   }
 
-  const isOwner = currentUser?.id === team.ownerId || currentUser?.role === 'admin';
+  const isOwner = currentUser?.id === team.ownerId || currentUser?.role === 'ADMIN';
   if (!isOwner) {
     return (
       <div className="flex max-w-7xl mx-auto w-full px-4 py-16">
@@ -81,18 +181,17 @@ export const ManageTeamPage: React.FC = () => {
     );
   }
 
-  const teamJoinReqs = joinRequests.filter(r => r.teamId === team.id && r.status === 'pending');
-  const teamPayments = payments.filter(p => p.teamId === team.id);
+  const teamJoinReqs = (team.joinRequests || []).filter((r: any) => r.status === 'PENDING');
+  const teamPayments = (team.payments || []);
 
   const handleSaveCredentials = (e: React.FormEvent) => {
     e.preventDefault();
-    updateCredentials(team.id, credUsername, credPassword, credNotes);
+    updateCreds({ variables: { teamId: team.id, emailOrUsername: credUsername, passwordEncrypted: credPassword, notes: credNotes } });
   };
 
   const handleDeleteTeamConfirm = () => {
-    deleteTeam(team.id);
+    deleteTeamReq({ variables: { id: team.id } });
     setShowDeleteModal(false);
-    navigate('/my-teams');
   };
 
   return (
@@ -172,7 +271,7 @@ export const ManageTeamPage: React.FC = () => {
                 : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            Billing Verification ({teamPayments.filter(p => p.status === 'pending').length} pending)
+            Billing Verification ({teamPayments.filter((p: any) => p.status === 'PENDING').length} pending)
           </button>
           <button
             onClick={() => setActiveTab('credentials')}
@@ -204,7 +303,7 @@ export const ManageTeamPage: React.FC = () => {
               <div className="flex flex-col gap-3 text-xs">
                 <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
                   <span className="text-slate-500">Total Subscription Cost</span>
-                  <span className="font-bold">৳{team.totalCostBDT} / month</span>
+                  <span className="font-bold">৳{team.totalCost} / month</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
                   <span className="text-slate-500">Host Collected Revenue</span>
@@ -212,7 +311,7 @@ export const ManageTeamPage: React.FC = () => {
                 </div>
                 <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
                   <span className="text-slate-500">Next Renewal Date</span>
-                  <span className="font-bold">{team.nextRenewalDate}</span>
+                  <span className="font-bold">{new Date(team.nextRenewalDate).toLocaleDateString()}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
                   <span className="text-slate-500">Payment Collection Number</span>
@@ -228,7 +327,7 @@ export const ManageTeamPage: React.FC = () => {
                   Review Pending Join Requests ({teamJoinReqs.length})
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => setActiveTab('billing')}>
-                  Audit bKash TxIDs & Screenshots
+                  Audit bKash TxIDs
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => setActiveTab('credentials')}>
                   Update Shared Login Password
@@ -243,31 +342,31 @@ export const ManageTeamPage: React.FC = () => {
           <Card className="p-6 flex flex-col gap-4">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">Active Member Roster</h3>
             <div className="flex flex-col gap-3">
-              {team.members.map(member => (
+              {team.members.map((member: any) => (
                 <div
-                  key={member.userId}
+                  key={member.user.id}
                   className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800"
                 >
                   <div className="flex items-center gap-3">
-                    <img src={member.avatar} alt={member.name} className="w-10 h-10 rounded-xl object-cover" />
+                    <img src={member.user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb'} alt={member.user.name} className="w-10 h-10 rounded-xl object-cover" />
                     <div>
                       <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1">
-                        <span>{member.name}</span>
-                        {member.userId === team.ownerId && <Badge variant="purple" size="sm">Host</Badge>}
+                        <span>{member.user.name}</span>
+                        {member.user.id === team.ownerId && <Badge variant="purple" size="sm">Host</Badge>}
                       </h4>
-                      <p className="text-[10px] text-slate-500">{member.email} • Joined {member.joinedAt}</p>
+                      <p className="text-[10px] text-slate-500">{member.user.email} • Joined {new Date(Number(member.joinedAt)).toLocaleDateString()}</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <Badge variant={member.paymentStatus === 'paid' ? 'paid' : 'pending'} size="sm">
+                    <Badge variant={member.paymentStatus === 'PAID' ? 'paid' : 'pending'} size="sm">
                       {member.paymentStatus.toUpperCase()}
                     </Badge>
-                    {member.userId !== team.ownerId && (
+                    {member.user.id !== team.ownerId && (
                       <Button
                         size="sm"
                         variant="danger"
-                        onClick={() => removeTeamMember(team.id, member.userId)}
+                        onClick={() => removeMember({ variables: { teamId: team.id, userId: member.user.id } })}
                       >
                         Remove
                       </Button>
@@ -287,16 +386,16 @@ export const ManageTeamPage: React.FC = () => {
               <p className="text-xs text-slate-500 py-6 text-center">No pending join requests for this team.</p>
             ) : (
               <div className="flex flex-col gap-4">
-                {teamJoinReqs.map(req => (
+                {teamJoinReqs.map((req: any) => (
                   <div
                     key={req.id}
                     className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                   >
                     <div className="flex items-start gap-3">
-                      <img src={req.userAvatar} alt={req.userName} className="w-10 h-10 rounded-xl object-cover" />
+                      <img src={req.user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb'} alt={req.user.name} className="w-10 h-10 rounded-xl object-cover" />
                       <div>
-                        <h4 className="text-xs font-bold text-slate-900 dark:text-white">{req.userName}</h4>
-                        <p className="text-[10px] text-slate-500">{req.userEmail} • Sent {req.createdAt}</p>
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-white">{req.user.name}</h4>
+                        <p className="text-[10px] text-slate-500">{req.user.email} • Sent {new Date(Number(req.createdAt)).toLocaleDateString()}</p>
                         <p className="text-xs text-slate-700 dark:text-slate-300 mt-2 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-800 italic">
                           "{req.message}"
                         </p>
@@ -304,10 +403,10 @@ export const ManageTeamPage: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2 self-end sm:self-center">
-                      <Button size="sm" variant="outline" onClick={() => rejectJoinRequest(req.id)}>
+                      <Button size="sm" variant="outline" onClick={() => rejectJoin({ variables: { id: req.id } })}>
                         Decline
                       </Button>
-                      <Button size="sm" variant="success" onClick={() => approveJoinRequest(req.id)}>
+                      <Button size="sm" variant="success" onClick={() => approveJoin({ variables: { id: req.id } })}>
                         Approve & Add
                       </Button>
                     </div>
@@ -326,33 +425,33 @@ export const ManageTeamPage: React.FC = () => {
               {teamPayments.length === 0 ? (
                 <p className="text-xs text-slate-500 py-6 text-center">No submitted payment proofs yet.</p>
               ) : (
-                teamPayments.map(pay => (
+                teamPayments.map((pay: any) => (
                   <div
                     key={pay.id}
                     className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                   >
                     <div className="flex items-start gap-3">
-                      <img src={pay.userAvatar} alt={pay.userName} className="w-10 h-10 rounded-xl object-cover" />
+                      <img src={pay.user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb'} alt={pay.user.name} className="w-10 h-10 rounded-xl object-cover" />
                       <div>
                         <div className="flex items-center gap-2">
-                          <h4 className="text-xs font-bold text-slate-900 dark:text-white">{pay.userName}</h4>
-                          <Badge variant={pay.status === 'verified' ? 'verified' : pay.status === 'rejected' ? 'rejected' : 'pending'} size="sm">
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white">{pay.user.name}</h4>
+                          <Badge variant={pay.status === 'VERIFIED' ? 'verified' : pay.status === 'REJECTED' ? 'rejected' : 'pending'} size="sm">
                             {pay.status.toUpperCase()}
                           </Badge>
                         </div>
                         <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
-                          {pay.paymentMethod} TxID: <span className="font-mono">{pay.transactionId}</span> (৳{pay.amountBDT})
+                          {pay.method} TxID: <span className="font-mono">{pay.transactionId}</span> (৳{pay.amount})
                         </p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">Submitted {pay.submittedAt}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">Submitted {new Date(Number(pay.createdAt)).toLocaleDateString()}</p>
                       </div>
                     </div>
 
-                    {pay.status === 'pending' && (
+                    {pay.status === 'PENDING' && (
                       <div className="flex items-center gap-2">
-                        <Button size="sm" variant="danger" onClick={() => rejectPayment(pay.id, 'Invalid TxID')}>
+                        <Button size="sm" variant="danger" onClick={() => rejectPaymentReq({ variables: { id: pay.id } })}>
                           Reject
                         </Button>
-                        <Button size="sm" variant="success" onClick={() => verifyPayment(pay.id)}>
+                        <Button size="sm" variant="success" onClick={() => verifyPaymentReq({ variables: { id: pay.id } })}>
                           Verify & Grant Credentials
                         </Button>
                       </div>
@@ -383,6 +482,7 @@ export const ManageTeamPage: React.FC = () => {
                 value={credUsername}
                 onChange={e => setCredUsername(e.target.value)}
                 placeholder="shared.account@gmail.com"
+                required
               />
 
               <Input
@@ -391,6 +491,7 @@ export const ManageTeamPage: React.FC = () => {
                 value={credPassword}
                 onChange={e => setCredPassword(e.target.value)}
                 placeholder="SharedPassword123!"
+                required
               />
 
               <Textarea

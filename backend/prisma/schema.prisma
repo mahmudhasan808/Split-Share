@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum TeamStatus {
+  ACTIVE
+  FULL
+  SUSPENDED
+}
+
+enum MemberRole {
+  OWNER
+  MEMBER
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  VERIFIED
+  REJECTED
+}
+
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  avatar       String?
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  ownedTeams    Team[]         @relation("TeamOwner")
+  memberships   TeamMember[]
+  joinRequests  JoinRequest[]
+  payments      Payment[]
+  notifications Notification[]
+}
+
+model Team {
+  id               String       @id @default(uuid())
+  name             String
+  subscriptionName String
+  description      String?
+  rules            String?
+  billingCycle     BillingCycle
+  totalCost        Float
+  maxMembers       Int
+  visibility       Visibility   @default(PUBLIC)
+  paymentMethod    String
+  paymentNumber    String
+  renewalDate      DateTime
+  status           TeamStatus   @default(ACTIVE)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  ownerId String
+  owner   User   @relation("TeamOwner", fields: [ownerId], references: [id])
+
+  members      TeamMember[]
+  joinRequests JoinRequest[]
+  payments     Payment[]
+  credential   Credential?
+}
+
+model TeamMember {
+  userId        String
+  teamId        String
+  role          MemberRole    @default(MEMBER)
+  joinedAt      DateTime      @default(now())
+  paymentStatus PaymentStatus @default(PENDING)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([userId, teamId])
+}
+
+model JoinRequest {
+  id        String            @id @default(uuid())
+  userId    String
+  teamId    String
+  message   String?
+  status    JoinRequestStatus @default(PENDING)
+  createdAt DateTime          @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id               String        @id @default(uuid())
+  userId           String
+  teamId           String
+  amount           Float
+  method           String // bKash, Nagad, Bank, SSLCommerz
+  transactionId    String?
+  proofUrl         String? // Stored via Cloudinary/S3
+  status           PaymentStatus @default(PENDING)
+  sslcommerzTranId String?       @unique
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+}
+
+model Credential {
+  id                String   @id @default(uuid())
+  teamId            String   @unique
+  emailOrUsername   String
+  passwordEncrypted String
+  notes             String?
+  updatedAt         DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  type      String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useData } from '../context/DataContext';
+import { useQuery, useMutation } from '@apollo/client/react';
+import { gql } from '@apollo/client';
 import { useAuth } from '../context/AuthContext';
+import { SERVICE_PRESETS } from '../data/mockData';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -19,16 +21,92 @@ import {
   PhoneCall
 } from 'lucide-react';
 
+const GET_TEAM_DETAILS = gql`
+  query GetTeamDetails($id: ID!) {
+    team(id: $id) {
+      id
+      name
+      subscriptionName
+      description
+      rules
+      billingCycle
+      totalCost
+      maxMembers
+      paymentMethod
+      paymentNumber
+      renewalDate
+      ownerId
+      owner {
+        name
+        avatar
+      }
+      members {
+        role
+        paymentStatus
+        joinedAt
+        user {
+          id
+          name
+          avatar
+        }
+      }
+    }
+  }
+`;
+
+const REQUEST_TO_JOIN = gql`
+  mutation RequestToJoin($teamId: ID!, $message: String) {
+    requestToJoinTeam(teamId: $teamId, message: $message) {
+      id
+      status
+    }
+  }
+`;
+
 export const TeamDetailsPage: React.FC = () => {
   const { teamId } = useParams<{ teamId: string }>();
-  const { teams, requestToJoinTeam } = useData();
   const { currentUser, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [requestMessage, setRequestMessage] = useState('');
 
-  const team = teams.find(t => t.id === teamId);
+  const { data: rawData, loading, error } = useQuery(GET_TEAM_DETAILS, {
+    variables: { id: teamId },
+    fetchPolicy: 'cache-and-network',
+    skip: !teamId
+  });
+
+  const [requestToJoin, { loading: requesting }] = useMutation(REQUEST_TO_JOIN, {
+    onCompleted: () => {
+      alert("Request sent successfully!");
+      setIsModalOpen(false);
+      setRequestMessage('');
+    },
+    onError: (e) => alert(e.message)
+  });
+
+  const data: any = rawData;
+  const team = useMemo(() => {
+    if (!data?.team) return null;
+    const t = data.team;
+    const preset = SERVICE_PRESETS.find(p => p.name === t.subscriptionName);
+    return {
+      ...t,
+      category: preset?.category || 'Custom',
+      serviceLogo: preset?.logo || '✨',
+      serviceName: t.subscriptionName,
+      currentMembersCount: t.members?.length || 1,
+      costPerMemberBDT: Math.round(t.totalCost / (t.maxMembers || 1)),
+      nextRenewalDate: t.renewalDate,
+      ownerName: t.owner?.name || 'Host',
+      ownerAvatar: t.owner?.avatar,
+      rules: t.rules ? t.rules.split('\n').filter(Boolean) : []
+    };
+  }, [data]);
+
+  if (loading) return <div className="max-w-4xl mx-auto px-4 py-16 text-center">Loading team details...</div>;
+  if (error) return <div className="max-w-4xl mx-auto px-4 py-16 text-center text-rose-500">Error loading team.</div>;
 
   if (!team) {
     return (
@@ -43,7 +121,7 @@ export const TeamDetailsPage: React.FC = () => {
   }
 
   const isOwner = currentUser?.id === team.ownerId;
-  const isMember = team.members.some(m => m.userId === currentUser?.id);
+  const isMember = team.members.some((m: any) => m.user.id === currentUser?.id);
   const availableSlots = team.maxMembers - team.currentMembersCount;
   const isFull = availableSlots <= 0;
 
@@ -52,9 +130,7 @@ export const TeamDetailsPage: React.FC = () => {
       navigate('/login');
       return;
     }
-    requestToJoinTeam(team.id, currentUser, requestMessage || 'Hi! I would like to join your team.');
-    setIsModalOpen(false);
-    setRequestMessage('');
+    requestToJoin({ variables: { teamId: team.id, message: requestMessage || 'Hi! I would like to join your team.' } });
   };
 
   return (
@@ -85,7 +161,7 @@ export const TeamDetailsPage: React.FC = () => {
           <div className="bg-white/10 backdrop-blur border border-white/20 p-4 rounded-2xl flex flex-col items-center justify-center text-center min-w-[180px]">
             <span className="text-xs text-indigo-200 font-medium">Your Monthly Split</span>
             <h2 className="text-3xl font-extrabold text-white mt-0.5">৳{team.costPerMemberBDT}</h2>
-            <p className="text-[10px] text-indigo-200 mt-1">Total: ৳{team.totalCostBDT} / {team.maxMembers} members</p>
+            <p className="text-[10px] text-indigo-200 mt-1">Total: ৳{team.totalCost} / {team.maxMembers} members</p>
           </div>
         </div>
       </Card>
@@ -106,7 +182,7 @@ export const TeamDetailsPage: React.FC = () => {
                 <span className="text-[10px] text-slate-400 font-semibold uppercase block">Next Renewal</span>
                 <span className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5 mt-0.5">
                   <Calendar className="w-4 h-4 text-indigo-500" />
-                  {team.nextRenewalDate}
+                  {new Date(team.nextRenewalDate).toLocaleDateString()}
                 </span>
               </div>
               <div>
@@ -127,17 +203,19 @@ export const TeamDetailsPage: React.FC = () => {
           </Card>
 
           {/* Team Rules */}
-          <Card className="p-6">
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-3">Host Guidelines & Rules</h3>
-            <ul className="flex flex-col gap-2.5">
-              {team.rules.map((rule, idx) => (
-                <li key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-slate-700 dark:text-slate-300">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                  <span>{rule}</span>
-                </li>
-              ))}
-            </ul>
-          </Card>
+          {team.rules.length > 0 && (
+            <Card className="p-6">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-3">Host Guidelines & Rules</h3>
+              <ul className="flex flex-col gap-2.5">
+                {team.rules.map((rule: string, idx: number) => (
+                  <li key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span>{rule}</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           {/* Current Members Roster */}
           <Card className="p-6">
@@ -145,26 +223,26 @@ export const TeamDetailsPage: React.FC = () => {
               Current Members ({team.members.length} / {team.maxMembers})
             </h3>
             <div className="flex flex-col gap-3">
-              {team.members.map(member => (
+              {team.members.map((member: any) => (
                 <div
-                  key={member.userId}
+                  key={member.user.id}
                   className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800"
                 >
                   <div className="flex items-center gap-3">
-                    <img src={member.avatar} alt={member.name} className="w-10 h-10 rounded-xl object-cover" />
+                    <img src={member.user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb'} alt={member.user.name} className="w-10 h-10 rounded-xl object-cover" />
                     <div>
                       <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1">
-                        <span>{member.name}</span>
-                        {member.userId === team.ownerId && (
+                        <span>{member.user.name}</span>
+                        {member.user.id === team.ownerId && (
                           <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-1.5 py-0.2 rounded font-semibold">
                             Host
                           </span>
                         )}
                       </h4>
-                      <p className="text-[10px] text-slate-500">Joined {member.joinedAt}</p>
+                      <p className="text-[10px] text-slate-500">Joined {new Date(Number(member.joinedAt)).toLocaleDateString()}</p>
                     </div>
                   </div>
-                  <Badge variant={member.paymentStatus === 'paid' ? 'paid' : 'pending'} size="sm">
+                  <Badge variant={member.paymentStatus === 'PAID' ? 'paid' : 'pending'} size="sm">
                     {member.paymentStatus.toUpperCase()}
                   </Badge>
                 </div>
@@ -198,7 +276,7 @@ export const TeamDetailsPage: React.FC = () => {
             ) : (
               <Button
                 variant="primary"
-                disabled={isFull}
+                disabled={isFull || requesting}
                 onClick={() => {
                   if (!isAuthenticated) {
                     navigate('/login');
@@ -207,7 +285,7 @@ export const TeamDetailsPage: React.FC = () => {
                   }
                 }}
               >
-                {isFull ? 'Team Full' : 'Request to Join Team'}
+                {requesting ? 'Sending...' : isFull ? 'Team Full' : 'Request to Join Team'}
               </Button>
             )}
 
@@ -221,7 +299,7 @@ export const TeamDetailsPage: React.FC = () => {
           <Card className="p-6">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-3">Team Host</span>
             <div className="flex items-center gap-3">
-              <img src={team.ownerAvatar} alt={team.ownerName} className="w-12 h-12 rounded-xl object-cover ring-2 ring-indigo-500/30" />
+              <img src={team.ownerAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb'} alt={team.ownerName} className="w-12 h-12 rounded-xl object-cover ring-2 ring-indigo-500/30" />
               <div>
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1">
                   <span>{team.ownerName}</span>
@@ -265,7 +343,7 @@ export const TeamDetailsPage: React.FC = () => {
           <Textarea
             label="Introductory Message"
             rows={3}
-            placeholder="Hi Alex! I would love to join your 4K Netflix profile. Ready to send payment via bKash immediately."
+            placeholder="Hi! I would love to join your 4K Netflix profile. Ready to send payment via bKash immediately."
             value={requestMessage}
             onChange={e => setRequestMessage(e.target.value)}
           />
@@ -274,8 +352,8 @@ export const TeamDetailsPage: React.FC = () => {
             <Button variant="outline" size="sm" onClick={() => setIsModalOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" size="sm" onClick={handleSendRequest}>
-              Send Request
+            <Button variant="primary" size="sm" onClick={handleSendRequest} disabled={requesting}>
+              {requesting ? 'Sending...' : 'Send Request'}
             </Button>
           </div>
         </div>

@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useData } from '../context/DataContext';
-import { SubscriptionCategory } from '../types';
+import { useQuery } from '@apollo/client/react';
+import { gql } from '@apollo/client';
+import { useAuth } from '../context/AuthContext';
 import { Input, Select } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -9,14 +10,38 @@ import { Button } from '../components/ui/Button';
 import { Pagination } from '../components/ui/Pagination';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { EmptyState } from '../components/ui/EmptyState';
-import { Search, Filter, SlidersHorizontal, Users, Calendar, ArrowUpDown } from 'lucide-react';
+import { Search, SlidersHorizontal, Calendar } from 'lucide-react';
+import { SERVICE_PRESETS } from '../data/mockData';
+
+const GET_TEAMS = gql`
+  query GetTeams {
+    teams {
+      id
+      name
+      subscriptionName
+      description
+      billingCycle
+      totalCost
+      maxMembers
+      createdAt
+      renewalDate
+      ownerId
+      members {
+        user {
+          id
+        }
+      }
+    }
+  }
+`;
 
 export const BrowseTeamsPage: React.FC = () => {
-  const { teams } = useData();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { currentUser } = useAuth();
+  const [searchParams] = useSearchParams();
+  const initialCat = searchParams.get('category') || 'All';
 
-  const initialCat = (searchParams.get('category') as SubscriptionCategory) || 'All';
+  const { data: rawData, loading, error } = useQuery(GET_TEAMS, { fetchPolicy: 'network-only' });
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCat);
@@ -26,19 +51,46 @@ export const BrowseTeamsPage: React.FC = () => {
 
   const categories = ['All', 'Entertainment', 'Music', 'Design', 'AI & Tech', 'Productivity', 'Custom'];
 
+  // Map backend teams to frontend UI structure
+  const data: any = rawData;
+  const teams = useMemo(() => {
+    if (!data?.teams) return [];
+    return data.teams.map((t: any) => {
+      // Find preset to get logo and category (fallback if not found)
+      const preset = SERVICE_PRESETS.find(p => p.name === t.subscriptionName);
+      
+      return {
+        ...t,
+        category: preset?.category || 'Custom',
+        serviceLogo: preset?.logo || '✨',
+        serviceName: t.subscriptionName,
+        currentMembersCount: t.members?.length || 1,
+        costPerMemberBDT: Math.round(t.totalCost / (t.maxMembers || 1)),
+        nextRenewalDate: t.renewalDate
+      };
+    });
+  }, [data]);
+
   // Filter & Sort Logic
   const filteredTeams = useMemo(() => {
-    return teams.filter(team => {
+    return teams.filter((team: any) => {
+      // Filter out teams the user already owns or is a member of
+      if (currentUser) {
+        const isOwner = team.ownerId === currentUser.id;
+        const isMember = team.members?.some((m: any) => m.user.id === currentUser.id);
+        if (isOwner || isMember) return false;
+      }
+
       const matchesSearch =
         team.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         team.serviceName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        team.description.toLowerCase().includes(searchQuery.toLowerCase());
+        (team.description && team.description.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchesCategory = selectedCategory === 'All' || team.category === selectedCategory;
       const matchesPrice = team.costPerMemberBDT <= maxPrice;
 
       return matchesSearch && matchesCategory && matchesPrice;
-    }).sort((a, b) => {
+    }).sort((a: any, b: any) => {
       if (sortBy === 'price_low') return a.costPerMemberBDT - b.costPerMemberBDT;
       if (sortBy === 'price_high') return b.costPerMemberBDT - a.costPerMemberBDT;
       if (sortBy === 'slots') return (b.maxMembers - b.currentMembersCount) - (a.maxMembers - a.currentMembersCount);
@@ -50,6 +102,9 @@ export const BrowseTeamsPage: React.FC = () => {
   const totalPages = Math.ceil(filteredTeams.length / itemsPerPage);
   const paginatedTeams = filteredTeams.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+  if (loading) return <div className="p-10 text-center">Loading teams...</div>;
+  if (error) return <div className="p-10 text-center text-red-500">Error loading teams.</div>;
+
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
       <Breadcrumbs items={[{ label: 'Browse Teams' }]} />
@@ -59,7 +114,7 @@ export const BrowseTeamsPage: React.FC = () => {
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">Browse Shared Subscriptions</h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Discover active teams with available member slots. Request to join with verified local bKash/Nagad billing.
+            Discover active teams with available member slots. Request to join with verified local billing.
           </p>
         </div>
         <Button variant="primary" size="sm" onClick={() => navigate('/create-team')}>
@@ -146,7 +201,7 @@ export const BrowseTeamsPage: React.FC = () => {
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {paginatedTeams.map(team => {
+          {paginatedTeams.map((team: any) => {
             const availableSlots = team.maxMembers - team.currentMembersCount;
             const isFull = availableSlots <= 0;
 
@@ -192,7 +247,16 @@ export const BrowseTeamsPage: React.FC = () => {
                   <div className="flex flex-col items-end gap-1">
                     <span className="text-[10px] text-slate-400 flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
-                      <span>Renews {team.nextRenewalDate.split('-')[2]}th</span>
+                      <span>Renews {
+                        (() => {
+                          const dateObj = new Date(team.nextRenewalDate);
+                          if (isNaN(dateObj.getTime())) {
+                            const numDate = new Date(Number(team.nextRenewalDate));
+                            return isNaN(numDate.getTime()) ? 'Unknown' : numDate.getDate() + 'th';
+                          }
+                          return dateObj.getDate() + 'th';
+                        })()
+                      }</span>
                     </span>
                     <Button size="sm" variant={isFull ? 'outline' : 'primary'}>
                       {isFull ? 'View Info' : 'Join Team'}
