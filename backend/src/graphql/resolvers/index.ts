@@ -57,7 +57,7 @@ export const resolvers = {
       const team = await context.prisma.team.findUnique({ where: { id: teamId } });
 
       if (team?.ownerId !== user.userId && (!membership || membership.paymentStatus !== 'PAID')) {
-        throw new Error('You must be a paid member to view credentials.');
+        return null;
       }
 
       return await context.prisma.credential.findUnique({ where: { teamId } });
