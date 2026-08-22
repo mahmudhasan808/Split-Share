@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useData } from '../context/DataContext';
+import { useQuery } from '@apollo/client/react';
+import { gql } from '@apollo/client';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { Card } from '../components/ui/Card';
@@ -9,16 +10,62 @@ import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
 import { Download, Search } from 'lucide-react';
 
+const GET_MY_PAYMENTS = gql`
+  query GetMyPaymentsHistory {
+    myTeams {
+      id
+      name
+      subscriptionName
+      payments {
+        id
+        amount
+        method
+        transactionId
+        status
+        createdAt
+        user {
+          id
+          name
+        }
+      }
+    }
+  }
+`;
+
 export const PaymentHistoryPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { payments, addToast } = useData();
+  const { data, loading, error } = useQuery(GET_MY_PAYMENTS, { fetchPolicy: 'cache-first' });
 
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
   const [searchTxId, setSearchTxId] = useState('');
 
+  const payments = useMemo(() => {
+    const dataAny: any = data;
+    if (!dataAny?.myTeams) return [];
+    const allPayments: any[] = [];
+    dataAny.myTeams.forEach((team: any) => {
+      (team.payments || []).forEach((p: any) => {
+        allPayments.push({
+          id: p.id,
+          userId: p.user.id,
+          userName: p.user.name,
+          teamName: team.name,
+          serviceName: team.subscriptionName,
+          amountBDT: p.amount,
+          paymentMethod: p.method,
+          transactionId: p.transactionId,
+          status: p.status.toLowerCase(),
+          submittedAt: new Date(Number(p.createdAt)).toLocaleString()
+        });
+      });
+    });
+    // Sort by most recent
+    return allPayments.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+  }, [data]);
+
   // Filter payments relevant to user or all if admin
   const userPayments = payments.filter(p => {
-    const isRelated = p.userId === currentUser?.id || currentUser?.role === 'admin' || currentUser?.role === 'owner';
+    const isRelated = p.userId === currentUser?.id || currentUser?.role === 'ADMIN' || currentUser?.role === 'OWNER';
     const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
     const matchesTx = p.transactionId.toLowerCase().includes(searchTxId.toLowerCase()) || p.teamName.toLowerCase().includes(searchTxId.toLowerCase());
     return isRelated && matchesStatus && matchesTx;
@@ -26,7 +73,7 @@ export const PaymentHistoryPage: React.FC = () => {
 
   const handleExportCSV = () => {
     if (userPayments.length === 0) {
-      addToast('info', 'No Data', 'No payment records to export.');
+      alert('No payment records to export.');
       return;
     }
 
@@ -50,9 +97,10 @@ export const PaymentHistoryPage: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-
-    addToast('success', 'CSV Exported! 📊', 'Payment history report downloaded successfully.');
   };
+
+  if (loading) return <div className="p-10 text-center">Loading payments...</div>;
+  if (error) return <div className="p-10 text-center text-rose-500">Error: {error.message}</div>;
 
   return (
     <div className="flex max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 gap-6">

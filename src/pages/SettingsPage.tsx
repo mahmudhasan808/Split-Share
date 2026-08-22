@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useData } from '../context/DataContext';
+
 import { useTheme } from '../context/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
@@ -12,7 +12,7 @@ import { Sun, Moon, Trash2 } from 'lucide-react';
 export const SettingsPage: React.FC = () => {
   const { currentUser, updateCurrentUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { addToast } = useData();
+  
 
   const [name, setName] = useState(currentUser?.name || '');
   const [bio, setBio] = useState(currentUser?.bio || '');
@@ -26,7 +26,7 @@ export const SettingsPage: React.FC = () => {
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     updateCurrentUser({ name, bio, phone });
-    addToast('success', 'Profile Updated', 'Your profile details have been saved.');
+    alert('Your profile details have been saved.');
   };
 
   const handlePasswordChange = (e: React.FormEvent) => {
@@ -34,7 +34,7 @@ export const SettingsPage: React.FC = () => {
     if (!newPassword) return;
     setCurrentPassword('');
     setNewPassword('');
-    addToast('success', 'Password Updated', 'Your password was changed successfully.');
+    alert('Your password was changed successfully.');
   };
 
   return (
@@ -132,7 +132,7 @@ export const SettingsPage: React.FC = () => {
         <Card className="p-6">
           <h3 className="text-base font-bold text-rose-600">Delete Account</h3>
           <p className="text-xs text-slate-500 mt-1 mb-4">Permanently remove your account and data from SplitShare.</p>
-          <Button variant="danger" size="sm" onClick={() => addToast('error', 'Action Restricted', 'Demo user account protection enabled.')}>
+          <Button variant="danger" size="sm" onClick={() => alert('Demo user account protection enabled.')}>
             <Trash2 className="w-4 h-4 mr-1.5" />
             Delete SplitShare Account
           </Button>

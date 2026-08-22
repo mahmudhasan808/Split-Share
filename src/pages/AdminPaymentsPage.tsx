@@ -1,10 +1,10 @@
 import React from 'react';
-import { useData } from '../context/DataContext';
+
 import { Sidebar } from '../components/layout/Sidebar';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
-import { INITIAL_PAYMENT_REPORTS } from '../data/mockData';
+
 import { ShieldCheck, AlertCircle } from 'lucide-react';
 
 export const AdminPaymentsPage: React.FC = () => {
@@ -30,7 +30,7 @@ export const AdminPaymentsPage: React.FC = () => {
           </h3>
 
           <div className="flex flex-col gap-3">
-            {INITIAL_PAYMENT_REPORTS.map(rep => (
+            {[].map(rep => (
               <div key={rep.id} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                 <div>
                   <div className="flex items-center gap-2">

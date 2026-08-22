@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useData } from '../context/DataContext';
+
 import { SERVICE_PRESETS } from '../data/mockData';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 export const LandingPage: React.FC = () => {
-  const { teams } = useData();
+  const teams: any[] = [];
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 

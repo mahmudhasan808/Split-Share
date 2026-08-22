@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useData } from '../context/DataContext';
+
 import { Sidebar } from '../components/layout/Sidebar';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { Card } from '../components/ui/Card';
@@ -9,7 +9,11 @@ import { Button } from '../components/ui/Button';
 import { Shield, Users, Layers, CreditCard, TrendingUp, AlertTriangle } from 'lucide-react';
 
 export const AdminDashboardPage: React.FC = () => {
-  const { stats, users, teams, payments } = useData();
+  const stats = { totalUsers: 0, totalActiveTeams: 0, totalVolumeBDT: 0, monthlyRevenueBDT: 0 };
+  const users: any[] = [];
+  const teams: any[] = [];
+  const payments: any[] = [];
+  const addToast = (a: any, b: any, c: any) => alert(b + ': ' + c);
   const navigate = useNavigate();
 
   return (

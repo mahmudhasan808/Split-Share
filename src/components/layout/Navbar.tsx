@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { useData } from '../../context/DataContext';
+
 import { useTheme } from '../../context/ThemeContext';
 import {
   Layers,
@@ -23,7 +23,7 @@ import { Badge } from '../ui/Badge';
 
 export const Navbar: React.FC = () => {
   const { currentUser, logout, isAuthenticated, isAdmin } = useAuth();
-  const { notifications, markNotificationAsRead } = useData();
+  const { notifications, markNotificationAsRead } = 
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();

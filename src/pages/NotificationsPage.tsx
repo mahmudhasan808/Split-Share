@@ -1,19 +1,48 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { useData } from '../context/DataContext';
+import { useQuery, useMutation } from '@apollo/client/react';
+import { gql } from '@apollo/client';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Breadcrumbs } from '../components/ui/Breadcrumbs';
 import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Bell, Trash2 } from 'lucide-react';
+import { Bell } from 'lucide-react';
+
+const GET_NOTIFICATIONS = gql`
+  query GetMyNotifications {
+    myNotifications {
+      id
+      title
+      message
+      type
+      link
+      read
+      createdAt
+    }
+  }
+`;
+
+const MARK_AS_READ = gql`
+  mutation MarkNotificationAsRead($id: ID!) {
+    markNotificationAsRead(id: $id)
+  }
+`;
 
 export const NotificationsPage: React.FC = () => {
-  const { currentUser } = useAuth();
-  const { notifications, markNotificationAsRead, clearNotifications } = useData();
   const navigate = useNavigate();
 
-  const userNotifs = notifications.filter(n => n.userId === currentUser?.id);
+  const { data, loading, error, refetch } = useQuery(GET_NOTIFICATIONS, {
+    fetchPolicy: 'cache-and-network'
+  });
+  
+  const [markAsRead] = useMutation(MARK_AS_READ, {
+    onCompleted: () => refetch()
+  });
+
+  const dataAny: any = data;
+  const notifications = dataAny?.myNotifications || [];
+
+  if (loading) return <div className="p-10 text-center">Loading notifications...</div>;
+  if (error) return <div className="p-10 text-center text-rose-500">Error: {error.message}</div>;
 
   return (
     <div className="flex max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 gap-6">
@@ -27,23 +56,20 @@ export const NotificationsPage: React.FC = () => {
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Notifications Hub</h1>
             <p className="text-xs text-slate-500">Alerts for join requests, payment verifications & credential changes</p>
           </div>
-          {userNotifs.length > 0 && (
-            <Button variant="outline" size="sm" leftIcon={<Trash2 className="w-4 h-4" />} onClick={clearNotifications}>
-              Clear All Notifications
-            </Button>
-          )}
         </div>
 
         <div className="flex flex-col gap-3">
-          {userNotifs.length === 0 ? (
+          {notifications.length === 0 ? (
             <Card className="p-12 text-center text-slate-500 text-xs">No notifications to display.</Card>
           ) : (
-            userNotifs.map(n => (
+            notifications.map((n: any) => (
               <Card
                 key={n.id}
                 hoverEffect
                 onClick={() => {
-                  markNotificationAsRead(n.id);
+                  if (!n.read) {
+                    markAsRead({ variables: { id: n.id } });
+                  }
                   if (n.link) navigate(n.link);
                 }}
                 className={`p-4 flex items-center justify-between cursor-pointer transition-colors ${
@@ -57,7 +83,7 @@ export const NotificationsPage: React.FC = () => {
                   <div>
                     <h4 className="text-xs font-bold text-slate-900 dark:text-white">{n.title}</h4>
                     <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">{n.message}</p>
-                    <span className="text-[10px] text-slate-400 mt-1 block">{n.createdAt}</span>
+                    <span className="text-[10px] text-slate-400 mt-1 block">{new Date(Number(n.createdAt)).toLocaleString()}</span>
                   </div>
                 </div>
 

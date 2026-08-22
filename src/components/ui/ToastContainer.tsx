@@ -1,9 +1,9 @@
 import React from 'react';
-import { useData } from '../../context/DataContext';
+
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 
 export const ToastContainer: React.FC = () => {
-  const { toasts, removeToast } = useData();
+  const toasts: any[] = []; const removeToast = (id: any) => {};
 
   if (toasts.length === 0) return null;
 

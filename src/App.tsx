@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
-import { DataProvider } from './context/DataContext';
+
 
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
@@ -34,7 +34,7 @@ export const App: React.FC = () => {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <DataProvider>
+        <>
           <BrowserRouter>
             <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
               <DemoRoleBar />
@@ -75,7 +75,7 @@ export const App: React.FC = () => {
               <ToastContainer />
             </div>
           </BrowserRouter>
-        </DataProvider>
+        </>
       </AuthProvider>
     </ThemeProvider>
   );
