@@ -271,7 +271,7 @@ export const ManageTeamPage: React.FC = () => {
                 : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            Billing Verification ({teamPayments.filter((p: any) => p.status === 'PENDING').length} pending)
+            Billing History
           </button>
           <button
             onClick={() => setActiveTab('credentials')}
@@ -420,7 +420,7 @@ export const ManageTeamPage: React.FC = () => {
         {/* Tab 4: Billing Verification */}
         {activeTab === 'billing' && (
           <Card className="p-6 flex flex-col gap-4">
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white">bKash / Nagad Payment Verification</h3>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Automated SSLCommerz Payments</h3>
             <div className="flex flex-col gap-4">
               {teamPayments.length === 0 ? (
                 <p className="text-xs text-slate-500 py-6 text-center">No submitted payment proofs yet.</p>
@@ -446,9 +446,7 @@ export const ManageTeamPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {pay.status === 'PENDING' && (
-                      <div className="flex items-center gap-2">
-                        <Button size="sm" variant="danger" onClick={() => rejectPaymentReq({ variables: { id: pay.id } })}>
+                    }>
                           Reject
                         </Button>
                         <Button size="sm" variant="success" onClick={() => verifyPaymentReq({ variables: { id: pay.id } })}>
