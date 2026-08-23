@@ -75,16 +75,16 @@ async function startServer() {
         total_amount: amount,
         currency: 'BDT',
         tran_id: tran_id,
-        success_url: `http://localhost:4000/api/payments/sslcommerz/success`,
-        fail_url: `http://localhost:4000/api/payments/sslcommerz/fail`,
-        cancel_url: `http://localhost:4000/api/payments/sslcommerz/cancel`,
-        ipn_url: `http://localhost:4000/api/payments/sslcommerz/ipn`,
+        success_url: `/api/payments/sslcommerz/success`,
+        fail_url: `/api/payments/sslcommerz/fail`,
+        cancel_url: `/api/payments/sslcommerz/cancel`,
+        ipn_url: `/api/payments/sslcommerz/ipn`,
         shipping_method: 'Courier',
         product_name: 'Team Subscription',
         product_category: 'Subscription',
         product_profile: 'general',
-        cus_name: user.name || 'John Doe',
-        cus_email: user.email || 'john@example.com',
+        cus_name: (user as any).name || 'John Doe',
+        cus_email: (user as any).email || 'john@example.com',
         cus_add1: 'Dhaka',
         cus_add2: 'Dhaka',
         cus_city: 'Dhaka',
@@ -93,7 +93,7 @@ async function startServer() {
         cus_country: 'Bangladesh',
         cus_phone: '01711111111',
         cus_fax: '01711111111',
-        ship_name: user.name || 'John Doe',
+        ship_name: (user as any).name || 'John Doe',
         ship_add1: 'Dhaka',
         ship_add2: 'Dhaka',
         ship_city: 'Dhaka',
@@ -120,15 +120,15 @@ async function startServer() {
     if (payment) {
       await prisma.payment.update({
         where: { id: payment.id },
-        data: { status: 'verified' }
+        data: { status: 'VERIFIED' }
       });
       await prisma.teamMember.update({
         where: { userId_teamId: { userId: payment.userId, teamId: payment.teamId } },
         data: { paymentStatus: 'PAID' }
       });
-      res.redirect(`http://localhost:5173/workspace/${payment.teamId}?payment=success`);
+      res.redirect(`/workspace/${payment.teamId}?payment=success`);
     } else {
-      res.redirect(`http://localhost:5173/dashboard?payment=fail`);
+      res.redirect(`/dashboard?payment=fail`);
     }
   });
 
@@ -138,11 +138,11 @@ async function startServer() {
     if (payment) {
        await prisma.payment.update({
         where: { id: payment.id },
-        data: { status: 'rejected' }
+        data: { status: 'REJECTED' }
       });
-      res.redirect(`http://localhost:5173/workspace/${payment.teamId}?payment=fail`);
+      res.redirect(`/workspace/${payment.teamId}?payment=fail`);
     } else {
-      res.redirect(`http://localhost:5173/dashboard?payment=fail`);
+      res.redirect(`/dashboard?payment=fail`);
     }
   });
   
@@ -150,9 +150,9 @@ async function startServer() {
     const { tran_id } = req.body;
     const payment = await prisma.payment.findUnique({ where: { sslcommerzTranId: tran_id } });
     if (payment) {
-      res.redirect(`http://localhost:5173/workspace/${payment.teamId}?payment=cancel`);
+      res.redirect(`/workspace/${payment.teamId}?payment=cancel`);
     } else {
-      res.redirect(`http://localhost:5173/dashboard`);
+      res.redirect(`/dashboard`);
     }
   });
 
