@@ -8,7 +8,7 @@ import { Badge } from '../components/ui/Badge';
 import { ShieldCheck, AlertCircle } from 'lucide-react';
 
 export const AdminPaymentsPage: React.FC = () => {
-  const { payments } = useData();
+  const payments: any[] = [];
 
   return (
     <div className="flex max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 gap-6">

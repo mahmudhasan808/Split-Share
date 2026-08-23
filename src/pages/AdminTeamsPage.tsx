@@ -9,7 +9,7 @@ import { Input } from '../components/ui/Input';
 import { Search, Trash2 } from 'lucide-react';
 
 export const AdminTeamsPage: React.FC = () => {
-  const { teams, deleteTeam } = useData();
+  const teams: any[] = []; const deleteTeam = (id: any) => {};
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredTeams = teams.filter(
