@@ -14,6 +14,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode = 'login' }) => 
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(initialMode);
   const { login, register, switchRole } = useAuth();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  
+  React.useEffect(() => {
+    if (currentUser) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [currentUser, navigate]);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

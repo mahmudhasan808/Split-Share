@@ -8,6 +8,7 @@ import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { DemoRoleBar } from './components/ui/DemoRoleBar';
 import { ToastContainer } from './components/ui/ToastContainer';
+import { ProtectedRoute } from './components/ProtectedRoute';
 
 // Pages
 import { LandingPage } from './pages/LandingPage';
@@ -50,21 +51,21 @@ export const App: React.FC = () => {
                   <Route path="/register" element={<AuthPage initialMode="register" />} />
 
                   {/* Authenticated Workspace */}
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/my-teams" element={<MyTeamsPage />} />
-                  <Route path="/create-team" element={<CreateTeamPage />} />
-                  <Route path="/manage/:teamId" element={<ManageTeamPage />} />
-                  <Route path="/workspace/:teamId" element={<TeamWorkspacePage />} />
-                  <Route path="/payments" element={<PaymentHistoryPage />} />
-                  <Route path="/notifications" element={<NotificationsPage />} />
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+                  <Route path="/my-teams" element={<ProtectedRoute><MyTeamsPage /></ProtectedRoute>} />
+                  <Route path="/create-team" element={<ProtectedRoute><CreateTeamPage /></ProtectedRoute>} />
+                  <Route path="/manage/:teamId" element={<ProtectedRoute><ManageTeamPage /></ProtectedRoute>} />
+                  <Route path="/workspace/:teamId" element={<ProtectedRoute><TeamWorkspacePage /></ProtectedRoute>} />
+                  <Route path="/payments" element={<ProtectedRoute><PaymentHistoryPage /></ProtectedRoute>} />
+                  <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+                  <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+                  <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
 
                   {/* Admin Panel */}
-                  <Route path="/admin" element={<AdminDashboardPage />} />
-                  <Route path="/admin/users" element={<AdminUsersPage />} />
-                  <Route path="/admin/teams" element={<AdminTeamsPage />} />
-                  <Route path="/admin/payments" element={<AdminPaymentsPage />} />
+                  <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminDashboardPage /></ProtectedRoute>} />
+                  <Route path="/admin/users" element={<ProtectedRoute requireAdmin><AdminUsersPage /></ProtectedRoute>} />
+                  <Route path="/admin/teams" element={<ProtectedRoute requireAdmin><AdminTeamsPage /></ProtectedRoute>} />
+                  <Route path="/admin/payments" element={<ProtectedRoute requireAdmin><AdminPaymentsPage /></ProtectedRoute>} />
 
                   {/* Fallback */}
                   <Route path="*" element={<Navigate to="/" replace />} />
