@@ -3,6 +3,8 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 import { useTheme } from '../../context/ThemeContext';
+import { useQuery, useMutation } from '@apollo/client/react';
+import { gql } from '@apollo/client';
 import {
   Layers,
   Search,
@@ -21,9 +23,33 @@ import {
 } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 
+const GET_NOTIFICATIONS = gql`
+  query GetMyNotifications {
+    myNotifications {
+      id
+      title
+      message
+      type
+      link
+      read
+      createdAt
+    }
+  }
+`;
+
+const MARK_AS_READ = gql`
+  mutation MarkNotificationAsRead($id: ID!) {
+    markNotificationAsRead(id: $id)
+  }
+`;
+
 export const Navbar: React.FC = () => {
   const { currentUser, logout, isAuthenticated, isAdmin } = useAuth();
-  const notifications: any[] = []; const markNotificationAsRead = (id: any) => {};
+  const { data, refetch } = useQuery(GET_NOTIFICATIONS, { skip: !isAuthenticated, fetchPolicy: 'cache-and-network' });
+  const [markAsRead] = useMutation(MARK_AS_READ, { onCompleted: () => refetch() });
+  const dataAny: any = data;
+  const notifications: any[] = dataAny?.myNotifications || [];
+  const markNotificationAsRead = (id: any) => markAsRead({ variables: { id } });
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -31,8 +57,8 @@ export const Navbar: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
-  const unreadCount = notifications.filter(n => !n.read && n.userId === currentUser?.id).length;
-  const userNotifs = notifications.filter(n => n.userId === currentUser?.id);
+  const unreadCount = notifications.filter(n => !n.read).length;
+  const userNotifs = notifications.slice(0, 2);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -180,7 +206,7 @@ export const Navbar: React.FC = () => {
                         >
                           <p className="font-semibold text-slate-900 dark:text-slate-100">{n.title}</p>
                           <p className="text-slate-600 dark:text-slate-300 mt-0.5 leading-snug">{n.message}</p>
-                          <span className="text-[10px] text-slate-400 mt-1 block">{n.createdAt}</span>
+                          <span className="text-[10px] text-slate-400 mt-1 block">{new Date(Number(n.createdAt)).toLocaleString()}</span>
                         </div>
                       ))
                     )}
