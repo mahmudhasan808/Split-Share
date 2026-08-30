@@ -75,10 +75,10 @@ async function startServer() {
         total_amount: amount,
         currency: 'BDT',
         tran_id: tran_id,
-        success_url: `/api/payments/sslcommerz/success`,
-        fail_url: `/api/payments/sslcommerz/fail`,
-        cancel_url: `/api/payments/sslcommerz/cancel`,
-        ipn_url: `/api/payments/sslcommerz/ipn`,
+        success_url: `${process.env.BACKEND_URL || 'http://localhost:4000'}/api/payments/sslcommerz/success`,
+        fail_url: `${process.env.BACKEND_URL || 'http://localhost:4000'}/api/payments/sslcommerz/fail`,
+        cancel_url: `${process.env.BACKEND_URL || 'http://localhost:4000'}/api/payments/sslcommerz/cancel`,
+        ipn_url: `${process.env.BACKEND_URL || 'http://localhost:4000'}/api/payments/sslcommerz/ipn`,
         shipping_method: 'Courier',
         product_name: 'Team Subscription',
         product_category: 'Subscription',
@@ -126,9 +126,9 @@ async function startServer() {
         where: { userId_teamId: { userId: payment.userId, teamId: payment.teamId } },
         data: { paymentStatus: 'PAID' }
       });
-      res.redirect(`/workspace/${payment.teamId}?payment=success`);
+      res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/workspace/${payment.teamId}?payment=success`);
     } else {
-      res.redirect(`/dashboard?payment=fail`);
+      res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/dashboard?payment=fail`);
     }
   });
 
@@ -140,9 +140,9 @@ async function startServer() {
         where: { id: payment.id },
         data: { status: 'REJECTED' }
       });
-      res.redirect(`/workspace/${payment.teamId}?payment=fail`);
+      res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/workspace/${payment.teamId}?payment=fail`);
     } else {
-      res.redirect(`/dashboard?payment=fail`);
+      res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/dashboard?payment=fail`);
     }
   });
   
@@ -150,9 +150,9 @@ async function startServer() {
     const { tran_id } = req.body;
     const payment = await prisma.payment.findUnique({ where: { sslcommerzTranId: tran_id } });
     if (payment) {
-      res.redirect(`/workspace/${payment.teamId}?payment=cancel`);
+      res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/workspace/${payment.teamId}?payment=cancel`);
     } else {
-      res.redirect(`/dashboard`);
+      res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/dashboard`);
     }
   });
 
